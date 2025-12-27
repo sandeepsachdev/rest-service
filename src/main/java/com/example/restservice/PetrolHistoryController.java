@@ -12,7 +12,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
-import org.springframework.retry.annotation.Retryable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,11 +22,13 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.text.SimpleDateFormat;
-import java.time.*;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static java.lang.System.exit;
 
@@ -101,7 +102,7 @@ public class PetrolHistoryController {
             priceHistoryRepository.findMostRecent();
 
         } catch (Exception e) {
-            //emailSender.sendEmail("exception 1", "Exception was " + e.getMessage() + " " + e.getCause());
+            emailSender.sendEmail("exception 1", "Exception was " + e.getMessage() + " " + e.getCause());
             try {
 				// Expect the first one to fail. Wait some time before retrying
                 Thread.sleep(1000 * 30);
@@ -169,7 +170,21 @@ public class PetrolHistoryController {
         return parents.get(1).text();
     }
 
-    @Scheduled(fixedRate = 1000 * 60 * 60, initialDelay = 1000 * 60)
+    @Scheduled(fixedRate = 1000 * 60 , initialDelay = 1000 * 60)
+    private void keepAlive() {
+
+        log.info("Keep alive ran. The time is now {}", getDateTime());
+        Document doc = null;
+        try {
+            doc = Jsoup.connect("https://rest-service-1750069696570.azurewebsites.net/petrol").get();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+
+    }
+
+        @Scheduled(fixedRate = 1000 * 60 * 60, initialDelay = 1000 * 60)
     private void refreshSmhFeed() {
 
         RssReader reader = new RssReader();
@@ -251,12 +266,9 @@ public class PetrolHistoryController {
 
         String title = getShortDateTime() + " Excluded: " + excludes.size() + " Total: " + excludedArticles;
 
-
-
         if (updates.isEmpty()) {
             emailSender.sendEmail(title, body.toString());
         }
-
 
         log.info("The time is now {}", getDateTime());
     }
