@@ -240,9 +240,11 @@ public class PetrolHistoryController {
 
         if (!updates.isEmpty()) {
             if (updates.size() == 1) {
-                emailSender.sendEmail(updates.get(0).getTitle().get(),
-                        updates.get(0).getDescription().get() + "~" +
-                                updates.get(0).getLink().get());
+                Item item = updates.get(0);
+                String title = getShortDateTime() + " " + updates.size() + " " + item.getTitle().get();
+                emailSender.sendEmail(title,
+                        item.getDescription().get() + "~" +
+                                item.getLink().get());
             } else {
                 String title = getShortDateTime() + " " + updates.size() + " Updates";
                 StringBuilder body = new StringBuilder();
