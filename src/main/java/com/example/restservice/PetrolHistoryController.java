@@ -4,6 +4,11 @@ import com.apptasticsoftware.rssreader.Item;
 import com.apptasticsoftware.rssreader.RssReader;
 import com.example.restservice.service.EmailSender;
 import com.example.restservice.smh.SmhItem;
+import org.apache.velocity.Template;
+import org.apache.velocity.VelocityContext;
+import org.apache.velocity.app.VelocityEngine;
+import org.apache.velocity.runtime.RuntimeConstants;
+import org.apache.velocity.runtime.resource.loader.ClasspathResourceLoader;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
@@ -19,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.io.IOException;
+import java.io.StringWriter;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.text.SimpleDateFormat;
@@ -314,6 +320,27 @@ public class PetrolHistoryController {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern(" HH:mm dd/MM");
 
         return getHostName().substring(0, 2) + formatter.format(zonedDateTime);
+    }
+
+    @GetMapping(value = "/smh", produces = MediaType.TEXT_HTML_VALUE)
+    @ResponseBody
+    public String smhPage() {
+        List<SmhItem> items = new ArrayList<>(articlesMap.values());
+        items.sort(Comparator.comparing(SmhItem::getPubDateZonedDateTime).reversed());
+
+        VelocityEngine ve = new VelocityEngine();
+        ve.setProperty(RuntimeConstants.RESOURCE_LOADERS, "classpath");
+        ve.setProperty("resource.loader.classpath.class", ClasspathResourceLoader.class.getName());
+        ve.init();
+
+        VelocityContext ctx = new VelocityContext();
+        ctx.put("items", items);
+        ctx.put("itemCount", items.size());
+
+        Template template = ve.getTemplate("templates/smh.vm");
+        StringWriter writer = new StringWriter();
+        template.merge(ctx, writer);
+        return writer.toString();
     }
 
     @RequestMapping(value = "/getSmhRss", produces = "application/json")
