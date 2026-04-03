@@ -42,6 +42,7 @@ import static java.lang.System.exit;
 public class PetrolHistoryController {
 
     private static final Map<String, SmhItem> articlesMap = new HashMap<String, SmhItem>();
+    private static final Map<String, SmhItem> excludedMap = new HashMap<String, SmhItem>();
     private static final Logger log = LoggerFactory.getLogger(PetrolHistoryController.class);
 
     private static final SimpleDateFormat dateFormat = new SimpleDateFormat("HH:mm:ss");
@@ -110,7 +111,7 @@ public class PetrolHistoryController {
         } catch (Exception e) {
             emailSender.sendEmail("exception 1", "Exception was " + e.getMessage() + " " + e.getCause());
             try {
-				// Expect the first one to fail. Wait some time before retrying
+                // Expect the first one to fail. Wait some time before retrying
                 Thread.sleep(1000 * 30);
             } catch (Exception ex) {
                 System.out.println("Couldn't sleep");
@@ -176,7 +177,7 @@ public class PetrolHistoryController {
         return parents.get(1).text();
     }
 
-    @Scheduled(fixedRate = 1000 * 60 , initialDelay = 1000 * 60)
+    @Scheduled(fixedRate = 1000 * 60, initialDelay = 1000 * 60)
     private void keepAlive() {
 
         log.info("Keep alive ran. The time is now {}", getDateTime());
@@ -190,7 +191,7 @@ public class PetrolHistoryController {
 
     }
 
-        @Scheduled(fixedRate = 1000 * 60 * 60, initialDelay = 1000 * 60)
+    @Scheduled(fixedRate = 1000 * 60 * 60, initialDelay = 1000 * 60)
     private void refreshSmhFeed() {
 
         RssReader reader = new RssReader();
@@ -212,33 +213,28 @@ public class PetrolHistoryController {
             }
         }
 
-        boolean firstTime = articlesMap.isEmpty();
         List<Item> updates = new ArrayList();
         List<Item> excludes = new ArrayList();
 
         for (Item item : articles) {
-            if (item.getGuid().isPresent() &&
-                    item.getLink().isPresent() &&
-                    item.getDescription().isPresent() &&
-                    item.getTitle().isPresent() &&
-                    !articlesMap.containsKey(item.getGuid().get())) {
-                String text = item.getLink().get().toLowerCase(Locale.ROOT) + item.getDescription().get().toLowerCase() + item.getTitle().get().toLowerCase();
-                if (!item.getLink().get().contains("sport")
-                        && !item.getLink().get().contains("lifestyle")
-                ) {
-                    articlesMap.put(item.getGuid().get(), new SmhItem(item));
+            if (allfieldPresent(item) &&
+                    !articlesMap.containsKey(item.getGuid().get()) &&
+                    !excludedMap.containsKey(item.getGuid().get())) {
+
+                String text = allText(item);
+
+                if (!item.getLink().get().contains("sport")  && !item.getLink().get().contains("lifestyle")) {
+
                     log.info(item.getGuid().get() + " " + item.getLink().get());
 
                     if (excludedKeywordsCache.stream().noneMatch(text::contains)) {
-//						if (!firstTime) {
+                        articlesMap.put(item.getGuid().get(), new SmhItem(item));
                         updates.add(item);
-//						}
                     } else {
-//						if (!firstTime) {
+                        excludedMap.put(item.getGuid().get(), new SmhItem(item));
                         excludes.add(item);
                         excludedArticles++;
                         log.warn("excluded count:" + excludedArticles + " " + text);
-//						}
                     }
                 }
             }
@@ -279,6 +275,19 @@ public class PetrolHistoryController {
         }
 
         log.info("The time is now {}", getDateTime());
+    }
+
+    private static String allText(Item item) {
+        return item.getLink().get().toLowerCase(Locale.ROOT) +
+                item.getDescription().get().toLowerCase() +
+                item.getTitle().get().toLowerCase();
+    }
+
+    private static boolean allfieldPresent(Item item) {
+        return item.getGuid().isPresent() &&
+                item.getLink().isPresent() &&
+                item.getDescription().isPresent() &&
+                item.getTitle().isPresent();
     }
 
     public String getDateTime() {
@@ -343,10 +352,32 @@ public class PetrolHistoryController {
         return writer.toString();
     }
 
+    @GetMapping(value = "/excludes", produces = MediaType.TEXT_HTML_VALUE)
+    @ResponseBody
+    public String smhExcludesPage() {
+        List<SmhItem> items = new ArrayList<>(excludedMap.values());
+        items.sort(Comparator.comparing(SmhItem::getPubDateZonedDateTime).reversed());
+
+        VelocityEngine ve = new VelocityEngine();
+        ve.setProperty(RuntimeConstants.RESOURCE_LOADERS, "classpath");
+        ve.setProperty("resource.loader.classpath.class", ClasspathResourceLoader.class.getName());
+        ve.init();
+
+        VelocityContext ctx = new VelocityContext();
+        ctx.put("items", items);
+        ctx.put("itemCount", items.size());
+
+        Template template = ve.getTemplate("templates/smh.vm");
+        StringWriter writer = new StringWriter();
+        template.merge(ctx, writer);
+        return writer.toString();
+    }
+
     @RequestMapping(value = "/getSmhRss", produces = "application/json")
     @ResponseBody
     public List<SmhItem> getSmhRss() {
         Collection<SmhItem> items = articlesMap.values();
+
         List<SmhItem> itemList = new ArrayList<>(items);
         itemList.sort(Comparator.comparing(SmhItem::getPubDateZonedDateTime).reversed());
         return itemList;
