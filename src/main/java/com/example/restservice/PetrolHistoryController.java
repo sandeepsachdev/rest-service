@@ -379,6 +379,7 @@ public class PetrolHistoryController {
         Collection<SmhItem> items = articlesMap.values();
 
         List<SmhItem> itemList = new ArrayList<>(items);
+        itemList.addAll(excludedMap.values());
         itemList.sort(Comparator.comparing(SmhItem::getPubDateZonedDateTime).reversed());
         return itemList;
     }
