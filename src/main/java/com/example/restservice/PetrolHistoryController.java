@@ -225,7 +225,7 @@ public class PetrolHistoryController {
 
                 if (!item.getLink().get().contains("sport")  && !item.getLink().get().contains("lifestyle")) {
 
-                    log.info(item.getGuid().get() + " " + item.getLink().get());
+//                    log.info(item.getGuid().get() + " " + item.getLink().get());
 
                     if (excludedKeywordsCache.stream().noneMatch(text::contains)) {
                         articlesMap.put(item.getGuid().get(), new SmhItem(item));
