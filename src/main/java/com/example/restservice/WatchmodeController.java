@@ -101,6 +101,7 @@ public class WatchmodeController {
             item.put("id", id);
             item.put("title", rel.get("title").asText());
             item.put("type", rel.get("type").asText());
+            item.put("imdb_id", nodeText(rel, "imdb_id"));
             item.put("source_release_date", nodeText(rel, "source_release_date"));
 
             // Poster: prefer release (TMDB CDN), fall back to details

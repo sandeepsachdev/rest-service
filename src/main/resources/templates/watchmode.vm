@@ -94,7 +94,9 @@
 
         .card-poster-wrap {
             position: relative; width: 100%; aspect-ratio: 2/3;
+            display: block; text-decoration: none;
         }
+        a.card-poster-wrap { cursor: pointer; }
         .card-poster {
             width: 100%; height: 100%;
             object-fit: cover; background: #252538;
@@ -267,7 +269,10 @@
             const posterInner = t.poster_url
                 ? '<img class="card-poster" src="' + esc(t.poster_url) + '" alt="" loading="lazy">'
                 : '<div class="card-placeholder">' + (isTV ? '📺' : '🎬') + '</div>';
-            const poster = '<div class="card-poster-wrap">' + posterInner + badge + '</div>';
+            const imdbHref = t.imdb_id ? 'https://www.imdb.com/title/' + esc(t.imdb_id) + '/' : '';
+            const poster = imdbHref
+                ? '<a class="card-poster-wrap" href="' + imdbHref + '" target="_blank" rel="noopener">' + posterInner + badge + '</a>'
+                : '<div class="card-poster-wrap">' + posterInner + badge + '</div>';
 
             const year = t.year || '';
             const ratingDisplay = t.user_rating != null
