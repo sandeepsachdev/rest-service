@@ -11,12 +11,12 @@ import org.apache.velocity.runtime.RuntimeConstants;
 import org.apache.velocity.runtime.resource.loader.ClasspathResourceLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.*;;
 
 import java.io.StringWriter;
 import java.net.URI;
@@ -42,6 +42,9 @@ public class WatchmodeController {
     @Value("${tmdb.api.key:}")
     private String tmdbApiKey;
 
+    @Autowired
+    private HiddenTitleRepository hiddenTitleRepository;
+
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -65,10 +68,11 @@ public class WatchmodeController {
 
     @GetMapping(value = "/api/watchmode/releases", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
-    public String getReleases() throws Exception {
-        if (cachedJson != null && System.currentTimeMillis() - cacheTime < CACHE_TTL) {
+    public String getReleases(@RequestParam(value = "refresh", defaultValue = "false") boolean refresh) throws Exception {
+        if (!refresh && cachedJson != null && System.currentTimeMillis() - cacheTime < CACHE_TTL) {
             return cachedJson;
         }
+        cachedJson = null;
 
         // 1. Fetch 6 months in two parallel 3-month chunks (API caps at ~249/request, returns oldest first)
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyyMMdd");
@@ -141,8 +145,21 @@ public class WatchmodeController {
                 item.put("year", det.get("year").asInt());
             if (det.has("plot_overview") && !det.get("plot_overview").isNull())
                 item.put("plot_overview", det.get("plot_overview").asText());
+            // Age rating: prefer Watchmode us_rating, fall back to TMDB content ratings
+            String ageRating = "";
+            if (det.has("us_rating") && !det.get("us_rating").isNull())
+                ageRating = det.get("us_rating").asText();
+            if (ageRating.isBlank() && !tmdbApiKey.isBlank()) {
+                JsonNode release = releaseById.get(id);
+                String tmdbType = nodeText(release, "tmdb_type");
+                String tmdbId   = nodeText(release, "tmdb_id");
+                if (!tmdbType.isBlank() && !tmdbId.isBlank())
+                    ageRating = fetchTmdbContentRating(tmdbType, tmdbId);
+            }
+            if (!ageRating.isBlank())
+                item.put("us_rating", ageRating);
 
-            // TMDB rating fallback when Watchmode has no user_rating
+            // TMDB user_rating fallback when Watchmode has no user_rating
             if (!hasRating && !tmdbApiKey.isBlank()) {
                 JsonNode release = releaseById.get(id);
                 String tmdbType = nodeText(release, "tmdb_type");
@@ -162,9 +179,16 @@ public class WatchmodeController {
             items.add(item);
         }
 
-        // Sort by release date descending
-        items.sort((a, b) -> b.get("source_release_date").asText()
-                .compareTo(a.get("source_release_date").asText()));
+        // Sort by user_rating descending; unrated titles go to the bottom
+        items.sort((a, b) -> {
+            double rA = a.has("user_rating") ? a.get("user_rating").asDouble() : -1;
+            double rB = b.has("user_rating") ? b.get("user_rating").asDouble() : -1;
+            return Double.compare(rB, rA);
+        });
+
+        // Remove any titles the user has permanently hidden
+        Set<Integer> hidden = hiddenTitleRepository.findAllTitleIds();
+        items.removeIf(item -> hidden.contains(item.get("id").asInt()));
 
         ArrayNode arr = mapper.createArrayNode();
         items.forEach(arr::add);
@@ -173,6 +197,27 @@ public class WatchmodeController {
         cachedJson = json;
         cacheTime = System.currentTimeMillis();
         return json;
+    }
+
+    @PostMapping(value = "/api/watchmode/hidden/{titleId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public ResponseEntity<String> hideTitle(@PathVariable int titleId) {
+        if (!hiddenTitleRepository.existsByTitleId(titleId)) {
+            hiddenTitleRepository.save(new HiddenTitle(titleId));
+        }
+        cachedJson = null; // invalidate cache so next load excludes this title
+        return ResponseEntity.ok("{\"hidden\":true}");
+    }
+
+    @DeleteMapping(value = "/api/watchmode/hidden/{titleId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public ResponseEntity<String> unhideTitle(@PathVariable int titleId) {
+        hiddenTitleRepository.findAll().stream()
+                .filter(h -> h.getTitleId().equals(titleId))
+                .findFirst()
+                .ifPresent(hiddenTitleRepository::delete);
+        cachedJson = null;
+        return ResponseEntity.ok("{\"hidden\":false}");
     }
 
     @GetMapping(value = "/watchmode/title/{id}", produces = MediaType.TEXT_HTML_VALUE)
@@ -214,6 +259,35 @@ public class WatchmodeController {
             log.warn("TMDB rating fetch failed for {} {}: {}", type, tmdbId, e.getMessage());
         }
         return 0;
+    }
+
+    private String fetchTmdbContentRating(String type, String tmdbId) {
+        try {
+            if ("movie".equals(type)) {
+                String url = TMDB_BASE + "/movie/" + tmdbId + "/release_dates?api_key=" + tmdbApiKey;
+                JsonNode node = mapper.readTree(httpGet(url));
+                for (JsonNode result : node.path("results")) {
+                    if ("US".equals(result.path("iso_3166_1").asText())) {
+                        for (JsonNode rd : result.path("release_dates")) {
+                            String cert = rd.path("certification").asText();
+                            if (!cert.isBlank()) return cert;
+                        }
+                    }
+                }
+            } else {
+                String url = TMDB_BASE + "/tv/" + tmdbId + "/content_ratings?api_key=" + tmdbApiKey;
+                JsonNode node = mapper.readTree(httpGet(url));
+                for (JsonNode result : node.path("results")) {
+                    if ("US".equals(result.path("iso_3166_1").asText())) {
+                        String rating = result.path("rating").asText();
+                        if (!rating.isBlank()) return rating;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("TMDB content rating fetch failed for {} {}: {}", type, tmdbId, e.getMessage());
+        }
+        return "";
     }
 
     private JsonNode fetchDetails(int id) {

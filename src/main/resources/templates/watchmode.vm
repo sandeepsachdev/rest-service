@@ -121,6 +121,17 @@
         }
         .info-link:hover { background: #5a4ed4; }
 
+        .hide-btn {
+            position: absolute; top: 7px; left: 7px;
+            padding: 2px 8px; border-radius: 4px;
+            background: rgba(0,0,0,.65); backdrop-filter: blur(4px);
+            color: #bbb; font-size: 0.65rem; font-weight: 700;
+            border: 1px solid rgba(255,255,255,.18);
+            cursor: pointer; transition: background .15s, color .15s;
+            letter-spacing: .04em;
+        }
+        .hide-btn:hover { background: rgba(200,0,0,.75); color: #fff; border-color: #f44; }
+
         .service-badge {
             position: absolute; bottom: 7px; left: 7px;
             font-size: 0.62rem; font-weight: 700;
@@ -165,6 +176,18 @@
         .rating-src { font-size: 0.6rem; font-weight: 400; margin-left: 1px; opacity: .8; }
         .rating.no-rating { color: #444; }
         .rating.no-rating::before { content: ""; }
+
+        .age-rating {
+            font-size: 0.6rem; font-weight: 700;
+            padding: 1px 4px; border-radius: 3px;
+            border: 1px solid currentColor;
+            letter-spacing: .03em; flex-shrink: 0;
+        }
+        .age-g, .age-tv-y, .age-tv-y7, .age-tv-g { color: #4caf50; }
+        .age-pg, .age-tv-pg                        { color: #8bc34a; }
+        .age-pg13, .age-tv14                       { color: #ffc107; }
+        .age-r, .age-tvma, .age-nc17               { color: #f44336; }
+        .age-nr, .age-unknown                      { color: #555; border-color: #555; }
 
         .state {
             display: flex; flex-direction: column; align-items: center;
@@ -219,7 +242,7 @@
     </div>
     <div class="filter-group">
         <span class="filter-label">Released within</span>
-        <input type="range" id="daysSlider" min="1" max="30" step="5" value="30">
+        <input type="range" id="daysSlider" min="5" max="30" step="5" value="30">
         <span id="daysVal">30 days</span>
     </div>
     <div class="filter-group">
@@ -254,7 +277,7 @@
     /* ── Load once ── */
     async function load() {
         try {
-            const res = await fetch('/api/watchmode/releases');
+            const res = await fetch('/api/watchmode/releases?refresh=true');
             const data = await res.json();
             allTitles = data.titles || [];
             render();
@@ -313,7 +336,8 @@
                 ? '<a class="imdb-link" href="' + imdbHref + '" target="_blank" rel="noopener">' + posterInner + '</a>'
                 : posterInner;
             const infoLink = '<a class="info-link" href="/watchmode/title/' + t.id + '" target="_blank" rel="noopener" title="Raw data">i</a>';
-            const poster = '<div class="card-poster-wrap">' + imdbWrapped + badge + infoLink + '</div>';
+            const hideBtn = '<button class="hide-btn" data-id="' + t.id + '" title="Permanently hide this title">Hide</button>';
+            const poster = '<div class="card-poster-wrap">' + imdbWrapped + badge + hideBtn + infoLink + '</div>';
 
             const year = t.year || '';
             let ratingDisplay;
@@ -325,12 +349,25 @@
                 ratingDisplay = '<span class="rating no-rating">&mdash;</span>';
             }
 
+            const ageRaw = (t.us_rating || '').toUpperCase();
+            const ageCls = {
+                'G': 'age-g', 'PG': 'age-pg', 'PG-13': 'age-pg13',
+                'R': 'age-r', 'NC-17': 'age-nc17',
+                'TV-Y': 'age-tv-y', 'TV-Y7': 'age-tv-y7', 'TV-G': 'age-tv-g',
+                'TV-PG': 'age-tv-pg', 'TV-14': 'age-tv14', 'TV-MA': 'age-tvma',
+                'NR': 'age-nr', 'NOT RATED': 'age-nr'
+            }[ageRaw] || 'age-unknown';
+            const ageDisplay = ageRaw && ageRaw !== 'NR' && ageRaw !== 'NOT RATED'
+                ? '<span class="age-rating ' + ageCls + '">' + esc(ageRaw) + '</span>'
+                : '';
+
             card.innerHTML = poster +
                 '<div class="card-body">' +
                   '<div class="card-title">' + esc(t.title) + '</div>' +
                   '<div class="card-row">' +
                     '<span class="card-year">' + year + '</span>' +
                     '<span class="badge ' + (isTV ? 'b-tv' : 'b-movie') + '">' + (isTV ? 'TV' : 'Film') + '</span>' +
+                    ageDisplay +
                     ratingDisplay +
                   '</div>' +
                 '</div>';
@@ -340,6 +377,17 @@
 
         content.innerHTML = '';
         content.appendChild(grid);
+
+        grid.querySelectorAll('.hide-btn').forEach(btn => {
+            btn.addEventListener('click', async e => {
+                e.preventDefault();
+                e.stopPropagation();
+                const id = btn.dataset.id;
+                await fetch('/api/watchmode/hidden/' + id, { method: 'POST' });
+                allTitles = allTitles.filter(t => String(t.id) !== id);
+                render();
+            });
+        });
     }
 
     function esc(s) {
