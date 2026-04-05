@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streaming News</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0d0d14;
+            color: #e0e0ee;
+            min-height: 100vh;
+        }
+
+        header {
+            background: #14141f;
+            border-bottom: 1px solid #222235;
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        header h1 { font-size: 1.2rem; font-weight: 700; letter-spacing: -.02em; }
+
+        .live-dot {
+            width: 10px; height: 10px; border-radius: 50%;
+            background: #ff3b30;
+            animation: pulse 1.4s ease-in-out infinite;
+            flex-shrink: 0;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%       { opacity: .5; transform: scale(.75); }
+        }
+
+        #status {
+            margin-left: auto;
+            font-size: 0.75rem;
+            color: #555;
+        }
+        #status.connected { color: #3cb95e; }
+        #status.error     { color: #ff5555; }
+
+        .source-bar {
+            background: #14141f;
+            border-bottom: 1px solid #222235;
+            padding: 10px 24px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .src-label { font-size: 0.75rem; color: #666; margin-right: 4px; }
+
+        .chip-wrap input { display: none; }
+        .chip-wrap label {
+            display: inline-block;
+            padding: 3px 12px; border-radius: 20px;
+            font-size: 0.75rem; font-weight: 600;
+            border: 1.5px solid #2a2a3c; color: #666;
+            cursor: pointer; transition: all .15s; user-select: none;
+        }
+        .chip-wrap input:checked + label {
+            border-color: var(--c); color: var(--c);
+            background: color-mix(in srgb, var(--c) 12%, transparent);
+        }
+        .chip-wrap label:hover { border-color: var(--c); color: var(--c); }
+
+        #feed {
+            max-width: 780px;
+            margin: 24px auto;
+            padding: 0 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .article {
+            background: #14141f;
+            border: 1px solid #222235;
+            border-radius: 10px;
+            padding: 14px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            animation: slideIn .35s ease;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+            transition: border-color .15s, transform .15s;
+        }
+        .article:hover {
+            border-color: #3a3a5c;
+            transform: translateX(3px);
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-12px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .article-top {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .source-badge {
+            font-size: 0.65rem; font-weight: 700;
+            padding: 2px 8px; border-radius: 4px;
+            text-transform: uppercase; letter-spacing: .05em;
+            flex-shrink: 0;
+        }
+        .article-date {
+            font-size: 0.68rem;
+            color: #555;
+            margin-left: auto;
+            flex-shrink: 0;
+        }
+
+        .article-title {
+            font-size: 0.95rem;
+            font-weight: 600;
+            line-height: 1.4;
+        }
+        .article-desc {
+            font-size: 0.8rem;
+            color: #888;
+            line-height: 1.5;
+        }
+
+        .state {
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 12px; min-height: 300px;
+            color: #444; font-size: 0.88rem;
+            text-align: center;
+        }
+        .spinner {
+            width: 34px; height: 34px;
+            border: 3px solid #222235; border-top-color: #6c63ff;
+            border-radius: 50%; animation: spin .7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .new-banner {
+            text-align: center;
+            font-size: 0.75rem; font-weight: 600;
+            color: #6c63ff;
+            padding: 6px;
+            cursor: pointer;
+            letter-spacing: .04em;
+        }
+        .new-banner:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="live-dot"></div>
+    <h1>Streaming News</h1>
+    <span id="status">Connecting…</span>
+</header>
+
+<div class="source-bar">
+    <span class="src-label">Sources</span>
+    <span class="chip-wrap">
+        <input type="checkbox" id="src-bbc" data-source="BBC News" checked>
+        <label for="src-bbc" style="--c:#e50914">BBC News</label>
+    </span>
+    <span class="chip-wrap">
+        <input type="checkbox" id="src-guardian" data-source="The Guardian" checked>
+        <label for="src-guardian" style="--c:#052962">The Guardian</label>
+    </span>
+    <span class="chip-wrap">
+        <input type="checkbox" id="src-npr" data-source="NPR News" checked>
+        <label for="src-npr" style="--c:#1e6d9c">NPR News</label>
+    </span>
+</div>
+
+<div id="feed">
+    <div class="state" id="loading-state">
+        <div class="spinner"></div>
+        <span>Connecting to live feed…</span>
+    </div>
+</div>
+
+#[[
+<script>
+    const SOURCE_COLORS = {
+        'BBC News':    { bg: '#1a0505', border: '#e50914', text: '#e50914' },
+        'The Guardian':{ bg: '#050d1a', border: '#052962', text: '#4a90d9' },
+        'NPR News':    { bg: '#051018', border: '#1e6d9c', text: '#4ab0d9' }
+    };
+
+    const feed         = document.getElementById('feed');
+    const statusEl     = document.getElementById('status');
+    const loadingState = document.getElementById('loading-state');
+
+    let articleCount = 0;
+    let pendingQueue = [];   // articles buffered while user scrolled away
+    let isAtTop = true;
+
+    function activeSourceSet() {
+        return new Set(
+            [...document.querySelectorAll('.chip-wrap input:checked')]
+                .map(el => el.dataset.source)
+        );
+    }
+
+    function formatDate(raw) {
+        if (!raw) return '';
+        try {
+            return new Date(raw).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } catch { return ''; }
+    }
+
+    function esc(s) {
+        return String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function buildCard(article) {
+        const colors = SOURCE_COLORS[article.source] || { bg: '#141420', border: '#444', text: '#aaa' };
+        const a = document.createElement('a');
+        a.className = 'article';
+        a.href = article.link;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.dataset.source = article.source;
+        a.style.borderLeftColor = colors.border;
+        a.style.borderLeftWidth = '3px';
+
+        a.innerHTML =
+            '<div class="article-top">' +
+              '<span class="source-badge" style="background:' + colors.bg + ';color:' + colors.text + ';border:1px solid ' + colors.border + '">' + esc(article.source) + '</span>' +
+              '<span class="article-date">' + esc(formatDate(article.pubDate)) + '</span>' +
+            '</div>' +
+            '<div class="article-title">' + esc(article.title) + '</div>' +
+            (article.desc ? '<div class="article-desc">' + esc(article.desc) + '</div>' : '');
+
+        return a;
+    }
+
+    function insertArticle(article, prepend) {
+        const activeSources = activeSourceSet();
+        if (!activeSources.has(article.source)) return;
+
+        if (loadingState && loadingState.parentNode === feed) {
+            feed.removeChild(loadingState);
+        }
+
+        const card = buildCard(article);
+        if (prepend) {
+            // If user is scrolled down, queue instead of inserting
+            if (!isAtTop && articleCount > 0) {
+                pendingQueue.push(article);
+                updatePendingBanner();
+                return;
+            }
+            feed.insertBefore(card, feed.firstChild);
+        } else {
+            feed.appendChild(card);
+        }
+        articleCount++;
+    }
+
+    function updatePendingBanner() {
+        let banner = document.getElementById('pending-banner');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'pending-banner';
+            banner.className = 'new-banner';
+            banner.addEventListener('click', flushPending);
+            feed.insertBefore(banner, feed.firstChild);
+        }
+        banner.textContent = '▲ ' + pendingQueue.length + ' new article' + (pendingQueue.length !== 1 ? 's' : '') + ' — click to show';
+    }
+
+    function flushPending() {
+        const banner = document.getElementById('pending-banner');
+        if (banner) feed.removeChild(banner);
+        const toFlush = pendingQueue.splice(0);
+        toFlush.reverse().forEach(a => {
+            const card = buildCard(a);
+            feed.insertBefore(card, feed.firstChild);
+            articleCount++;
+        });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Track scroll position
+    window.addEventListener('scroll', () => {
+        isAtTop = window.scrollY < 120;
+        if (isAtTop && pendingQueue.length > 0) flushPending();
+    });
+
+    // Source filter toggles
+    document.querySelectorAll('.chip-wrap input').forEach(cb => {
+        cb.addEventListener('change', () => {
+            const activeSources = activeSourceSet();
+            document.querySelectorAll('.article').forEach(el => {
+                el.style.display = activeSources.has(el.dataset.source) ? '' : 'none';
+            });
+        });
+    });
+
+    // SSE connection
+    function connect() {
+        const es = new EventSource('/api/streaming-news/events');
+
+        es.addEventListener('article', e => {
+            try {
+                const article = JSON.parse(e.data);
+                const isInitial = articleCount === 0;
+                insertArticle(article, !isInitial);
+            } catch {}
+        });
+
+        es.onopen = () => {
+            statusEl.textContent = 'Live';
+            statusEl.className = 'connected';
+        };
+
+        es.onerror = () => {
+            statusEl.textContent = 'Reconnecting…';
+            statusEl.className = 'error';
+            es.close();
+            setTimeout(connect, 5000);
+        };
+    }
+
+    connect();
+</script>
+]]#
+</body>
+</html>
