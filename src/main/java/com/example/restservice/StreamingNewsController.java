@@ -28,6 +28,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -98,6 +100,8 @@ public class StreamingNewsController {
                         .name("article")
                         .data(mapper.writeValueAsString(article)));
             }
+            // Signal end of initial batch so the client can sort and render
+            emitter.send(SseEmitter.event().name("init-done").data(""));
         } catch (Exception e) {
             emitters.remove(emitter);
         }
@@ -227,21 +231,34 @@ public class StreamingNewsController {
         return "";
     }
 
-    /** Parse an RFC 822 pubDate string to epoch milliseconds; returns now() on failure. */
+    /**
+     * Parse a pubDate string to epoch milliseconds.
+     * Tries RFC 822, common variants, and ISO 8601.
+     * Returns 0 on failure so unparseable articles sort to the bottom.
+     */
     private long parsePubDateMs(String pubDate) {
-        if (pubDate.isBlank()) return System.currentTimeMillis();
-        String[] formats = {
+        if (pubDate.isBlank()) return 0L;
+        // RFC 822 / RFC 1123 variants
+        String[] rfcFormats = {
             "EEE, dd MMM yyyy HH:mm:ss z",
             "EEE, dd MMM yyyy HH:mm:ss Z",
-            "dd MMM yyyy HH:mm:ss z"
+            "dd MMM yyyy HH:mm:ss z",
+            "dd MMM yyyy HH:mm:ss Z",
+            "EEE, d MMM yyyy HH:mm:ss z",
+            "EEE, d MMM yyyy HH:mm:ss Z"
         };
-        for (String fmt : formats) {
+        for (String fmt : rfcFormats) {
             try {
-                return new SimpleDateFormat(fmt, Locale.ENGLISH).parse(pubDate).getTime();
+                SimpleDateFormat sdf = new SimpleDateFormat(fmt, Locale.ENGLISH);
+                sdf.setLenient(false);
+                return sdf.parse(pubDate).getTime();
             } catch (Exception ignored) {}
         }
-        log.debug("Could not parse pubDate: {}", pubDate);
-        return System.currentTimeMillis();
+        // ISO 8601 (e.g. 2026-04-05T09:30:00Z or with offset)
+        try { return Instant.parse(pubDate).toEpochMilli(); } catch (Exception ignored) {}
+        try { return OffsetDateTime.parse(pubDate).toInstant().toEpochMilli(); } catch (Exception ignored) {}
+        log.debug("Could not parse pubDate: '{}'", pubDate);
+        return 0L;
     }
 
     private String text(Element parent, String tag) {

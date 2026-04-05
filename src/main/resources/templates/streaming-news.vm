@@ -226,8 +226,10 @@
     const loadingState = document.getElementById('loading-state');
 
     let articleCount = 0;
-    let pendingQueue = [];   // articles buffered while user scrolled away
+    let pendingQueue = [];     // articles buffered while user scrolled away
     let isAtTop = true;
+    let initBuffer = [];       // articles buffered until init-done event
+    let initComplete = false;
 
     function activeSourceSet() {
         return new Set(
@@ -337,12 +339,30 @@
 
     // SSE connection
     function connect() {
+        initBuffer = [];
+        initComplete = false;
         const es = new EventSource('/api/streaming-news/events');
 
         es.addEventListener('article', e => {
             try {
-                insertArticle(JSON.parse(e.data), true);
+                const article = JSON.parse(e.data);
+                if (!initComplete) {
+                    initBuffer.push(article);
+                } else {
+                    // Live update: new article is always the most recent, prepend it
+                    insertArticle(article, true);
+                }
             } catch {}
+        });
+
+        // Backend signals end of initial batch; sort and render all at once
+        es.addEventListener('init-done', () => {
+            initComplete = true;
+            // Sort newest-first by epoch ms; articles with unparseable dates (ms=0) go to bottom
+            initBuffer.sort((a, b) => parseInt(b.pubDateMs || 0) - parseInt(a.pubDateMs || 0));
+            // Append in newest-first order: first appended = top of feed
+            initBuffer.forEach(a => insertArticle(a, false));
+            initBuffer = [];
         });
 
         es.onopen = () => {
