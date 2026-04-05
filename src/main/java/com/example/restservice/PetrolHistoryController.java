@@ -71,7 +71,19 @@ public class PetrolHistoryController {
                 "<style> table, th, td {\n" +
                 "  border: 1px solid black;\n" +
                 "  border-collapse: collapse;\n" +
-                " padding: 5px;} </style> <body>\n");
+                " padding: 5px;} \n" +
+                "nav { font-family: sans-serif; background: #1a1a2e; padding: 12px 20px; display: flex; gap: 16px; flex-wrap: wrap; }\n" +
+                "nav a { color: #a78bfa; text-decoration: none; font-size: 0.9rem; font-weight: 600; padding: 4px 10px; border-radius: 6px; border: 1px solid #2a2a4a; }\n" +
+                "nav a:hover { background: #2a2a4a; }\n" +
+                "</style> <body>\n");
+
+        output.append("<nav>");
+        output.append("<a href=\"/\">&#9981; Petrol Prices</a>");
+        output.append("<a href=\"/smh\">&#128240; SMH News</a>");
+        output.append("<a href=\"/excludes\">&#128683; Excludes</a>");
+        output.append("<a href=\"/watchmode\">&#127916; New Releases</a>");
+        output.append("<a href=\"/streaming-news\">&#128225; Streaming News</a>");
+        output.append("</nav>");
 
         output.append("<table><tr><th>Date Time</th><th>Forcast</th></tr>");
         List<PriceHistory> history = priceHistoryRepository.findAll(Sort.by(Sort.Direction.DESC, "id"));
