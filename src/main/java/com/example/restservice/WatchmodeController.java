@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.io.StringWriter;
@@ -160,6 +161,32 @@ public class WatchmodeController {
         cachedJson = json;
         cacheTime = System.currentTimeMillis();
         return json;
+    }
+
+    @GetMapping(value = "/watchmode/title/{id}", produces = MediaType.TEXT_HTML_VALUE)
+    @ResponseBody
+    public String titleDetailPage(@PathVariable int id) throws Exception {
+        JsonNode det = fetchDetails(id);
+
+        List<String[]> rows = new ArrayList<>();
+        det.fields().forEachRemaining(e -> {
+            String value = e.getValue().isNull() ? "" : e.getValue().toString().replaceAll("^\"|\"$", "");
+            rows.add(new String[]{e.getKey(), value});
+        });
+
+        VelocityEngine ve = new VelocityEngine();
+        ve.setProperty(RuntimeConstants.RESOURCE_LOADERS, "classpath");
+        ve.setProperty("resource.loader.classpath.class", ClasspathResourceLoader.class.getName());
+        ve.init();
+
+        VelocityContext ctx = new VelocityContext();
+        ctx.put("rows", rows);
+        ctx.put("title", det.has("title") ? det.get("title").asText() : "Title #" + id);
+
+        Template tpl = ve.getTemplate("templates/watchmode-title.vm");
+        StringWriter w = new StringWriter();
+        tpl.merge(ctx, w);
+        return w.toString();
     }
 
     private JsonNode fetchDetails(int id) {

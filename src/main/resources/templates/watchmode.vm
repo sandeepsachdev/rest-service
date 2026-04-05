@@ -108,6 +108,20 @@
             align-items: center; justify-content: center;
             font-size: 2.2rem;
         }
+        .info-link {
+            position: absolute; top: 7px; right: 7px;
+            width: 22px; height: 22px; border-radius: 50%;
+            background: rgba(0,0,0,.65);
+            backdrop-filter: blur(4px);
+            color: #aaa;
+            font-size: 0.72rem; font-weight: 700;
+            display: flex; align-items: center; justify-content: center;
+            text-decoration: none;
+            border: 1px solid rgba(255,255,255,.15);
+            transition: background .15s, color .15s;
+        }
+        .info-link:hover { background: #7c6af7; color: #fff; }
+
         .service-badge {
             position: absolute; bottom: 7px; left: 7px;
             font-size: 0.62rem; font-weight: 700;
@@ -291,9 +305,10 @@
                 ? '<img class="card-poster" src="' + esc(t.poster_url) + '" alt="" loading="lazy">'
                 : '<div class="card-placeholder">' + (isTV ? '📺' : '🎬') + '</div>';
             const imdbHref = t.imdb_id ? 'https://www.imdb.com/title/' + esc(t.imdb_id) + '/' : '';
+            const infoLink = '<a class="info-link" href="/watchmode/title/' + t.id + '" target="_blank" rel="noopener" title="Raw data">i</a>';
             const poster = imdbHref
-                ? '<a class="card-poster-wrap" href="' + imdbHref + '" target="_blank" rel="noopener">' + posterInner + badge + '</a>'
-                : '<div class="card-poster-wrap">' + posterInner + badge + '</div>';
+                ? '<a class="card-poster-wrap" href="' + imdbHref + '" target="_blank" rel="noopener">' + posterInner + badge + infoLink + '</a>'
+                : '<div class="card-poster-wrap">' + posterInner + badge + infoLink + '</div>';
 
             const year = t.year || '';
             let ratingDisplay;
