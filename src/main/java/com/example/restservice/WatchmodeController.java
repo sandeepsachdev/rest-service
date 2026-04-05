@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Controller;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.ResponseBody;
@@ -34,8 +35,12 @@ public class WatchmodeController {
     private static final Logger log = LoggerFactory.getLogger(WatchmodeController.class);
     private static final String API_KEY = "pLpfDe0oNjhVtgjoSIaZKxdj7mEDOG0igYM63zoB";
     private static final String BASE = "https://api.watchmode.com/v1";
+    private static final String TMDB_BASE = "https://api.themoviedb.org/3";
     private static final Set<Integer> TARGET_SOURCES = Set.of(203, 372, 26, 387);
     private static final long CACHE_TTL = 60 * 60 * 1000L;
+
+    @Value("${tmdb.api.key:}")
+    private String tmdbApiKey;
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient http = HttpClient.newBuilder()
@@ -69,23 +74,17 @@ public class WatchmodeController {
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyyMMdd");
         LocalDate today = LocalDate.now();
         String end1   = today.format(fmt);
-        String start1 = today.minusMonths(3).format(fmt);
-        String end2   = today.minusMonths(3).minusDays(1).format(fmt);
-        String start2 = today.minusMonths(6).format(fmt);
+        String start1 = today.minusMonths(1).format(fmt);
 
         CompletableFuture<String> fetch1 = CompletableFuture.supplyAsync(() -> {
             try { return httpGet(BASE + "/releases/?apiKey=" + API_KEY + "&start_date=" + start1 + "&end_date=" + end1); }
             catch (Exception e) { return "{\"releases\":[]}"; }
         });
-        CompletableFuture<String> fetch2 = CompletableFuture.supplyAsync(() -> {
-            try { return httpGet(BASE + "/releases/?apiKey=" + API_KEY + "&start_date=" + start2 + "&end_date=" + end2); }
-            catch (Exception e) { return "{\"releases\":[]}"; }
-        });
-        CompletableFuture.allOf(fetch1, fetch2).join();
+
+        CompletableFuture.allOf(fetch1).join();
 
         List<JsonNode> allReleases = new ArrayList<>();
         for (JsonNode rel : mapper.readTree(fetch1.get()).get("releases")) allReleases.add(rel);
-        for (JsonNode rel : mapper.readTree(fetch2.get()).get("releases")) allReleases.add(rel);
 
         // 2. Filter to target sources; deduplicate by title ID; track sources per title
         Map<Integer, List<String>> sourcesById = new LinkedHashMap<>();
@@ -132,8 +131,9 @@ public class WatchmodeController {
             if (poster.isEmpty()) poster = nodeText(det, "posterMedium");
             item.put("poster_url", poster);
 
-            // Rating & year from details
-            if (det.has("user_rating") && !det.get("user_rating").isNull())
+            // Rating & year from Watchmode details
+            boolean hasRating = det.has("user_rating") && !det.get("user_rating").isNull();
+            if (hasRating)
                 item.put("user_rating", det.get("user_rating").asDouble());
             if (det.has("critic_score") && !det.get("critic_score").isNull())
                 item.put("critic_score", det.get("critic_score").asInt());
@@ -141,6 +141,18 @@ public class WatchmodeController {
                 item.put("year", det.get("year").asInt());
             if (det.has("plot_overview") && !det.get("plot_overview").isNull())
                 item.put("plot_overview", det.get("plot_overview").asText());
+
+            // TMDB rating fallback when Watchmode has no user_rating
+            if (!hasRating && !tmdbApiKey.isBlank()) {
+                JsonNode release = releaseById.get(id);
+                String tmdbType = nodeText(release, "tmdb_type");
+                String tmdbId   = nodeText(release, "tmdb_id");
+                if (!tmdbType.isBlank() && !tmdbId.isBlank()) {
+                    double tmdbRating = fetchTmdbRating(tmdbType, tmdbId);
+                    if (tmdbRating > 0)
+                        item.put("user_rating", tmdbRating);
+                }
+            }
 
             // Sources (deduplicated)
             ArrayNode sources = mapper.createArrayNode();
@@ -187,6 +199,21 @@ public class WatchmodeController {
         StringWriter w = new StringWriter();
         tpl.merge(ctx, w);
         return w.toString();
+    }
+
+    private double fetchTmdbRating(String type, String tmdbId) {
+        try {
+            String endpoint = "movie".equals(type) ? "/movie/" : "/tv/";
+            String url = TMDB_BASE + endpoint + tmdbId + "?api_key=" + tmdbApiKey;
+            JsonNode node = mapper.readTree(httpGet(url));
+            if (node.has("vote_average") && !node.get("vote_average").isNull()) {
+                double rating = node.get("vote_average").asDouble();
+                if (rating > 0) return Math.round(rating * 10.0) / 10.0;
+            }
+        } catch (Exception e) {
+            log.warn("TMDB rating fetch failed for {} {}: {}", type, tmdbId, e.getMessage());
+        }
+        return 0;
     }
 
     private JsonNode fetchDetails(int id) {
