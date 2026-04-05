@@ -131,6 +131,8 @@
             letter-spacing: .04em;
         }
         .hide-btn:hover { background: rgba(200,0,0,.75); color: #fff; border-color: #f44; }
+        .unhide-btn { color: #6aee9a; border-color: rgba(106,238,154,.4); }
+        .unhide-btn:hover { background: rgba(0,160,80,.6); color: #fff; border-color: #6aee9a; }
 
         .service-badge {
             position: absolute; bottom: 7px; left: 7px;
@@ -360,7 +362,9 @@
                 ? '<a class="imdb-link" href="' + imdbHref + '" target="_blank" rel="noopener">' + posterInner + '</a>'
                 : posterInner;
             const infoLink = '<a class="info-link" href="/watchmode/title/' + t.id + '" target="_blank" rel="noopener" title="Raw data">i</a>';
-            const hideBtn = '<button class="hide-btn" data-id="' + t.id + '" title="Permanently hide this title">Hide</button>';
+            const hideBtn = t.hidden
+                ? '<button class="hide-btn unhide-btn" data-id="' + t.id + '" title="Unhide this title">Unhide</button>'
+                : '<button class="hide-btn" data-id="' + t.id + '" title="Permanently hide this title">Hide</button>';
             const poster = '<div class="card-poster-wrap">' + imdbWrapped + badge + hideBtn + infoLink + '</div>';
 
             const year = t.year || '';
@@ -409,14 +413,20 @@
         content.appendChild(grid);
 
         grid.querySelectorAll('.hide-btn').forEach(btn => {
-            btn.addEventListener('click', async e => {
+            btn.addEventListener('click', e => {
                 e.preventDefault();
                 e.stopPropagation();
                 const id = btn.dataset.id;
-                await fetch('/api/watchmode/hidden/' + id, { method: 'POST' });
-                const t = allTitles.find(t => String(t.id) === id);
-                if (t) t.hidden = true;
-                render();
+                const title = allTitles.find(t => String(t.id) === id);
+                if (btn.classList.contains('unhide-btn')) {
+                    if (title) title.hidden = false;
+                    render();
+                    fetch('/api/watchmode/hidden/' + id, { method: 'DELETE' });
+                } else {
+                    if (title) title.hidden = true;
+                    render();
+                    fetch('/api/watchmode/hidden/' + id, { method: 'POST' });
+                }
             });
         });
     }
@@ -443,6 +453,18 @@
     });
     document.getElementById('showUnrated').addEventListener('change', render);
     document.getElementById('showHidden').addEventListener('change', render);
+
+    // iOS BFCache: when Safari restores a frozen page, re-render from cached data
+    // or reload if the page was frozen before data arrived.
+    window.addEventListener('pageshow', e => {
+        if (e.persisted) {
+            if (allTitles.length > 0) {
+                render();
+            } else {
+                load();
+            }
+        }
+    });
 
     load();
 </script>

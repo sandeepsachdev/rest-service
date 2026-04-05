@@ -337,11 +337,28 @@
         });
     });
 
+    let activeEs = null;
+
+    function flushInitBuffer() {
+        if (initComplete) return;
+        initComplete = true;
+        initBuffer.sort((a, b) => parseInt(b.pubDateMs || 0) - parseInt(a.pubDateMs || 0));
+        initBuffer.forEach(a => insertArticle(a, false));
+        initBuffer = [];
+    }
+
     // SSE connection
     function connect() {
+        if (activeEs) { activeEs.close(); activeEs = null; }
         initBuffer = [];
         initComplete = false;
+
         const es = new EventSource('/api/streaming-news/events');
+        activeEs = es;
+
+        // Safety net: if init-done never arrives (e.g. iOS drops the connection
+        // mid-stream), render whatever arrived after 8 seconds.
+        const initTimeout = setTimeout(flushInitBuffer, 8000);
 
         es.addEventListener('article', e => {
             try {
@@ -349,20 +366,14 @@
                 if (!initComplete) {
                     initBuffer.push(article);
                 } else {
-                    // Live update: new article is always the most recent, prepend it
                     insertArticle(article, true);
                 }
             } catch {}
         });
 
-        // Backend signals end of initial batch; sort and render all at once
         es.addEventListener('init-done', () => {
-            initComplete = true;
-            // Sort newest-first by epoch ms; articles with unparseable dates (ms=0) go to bottom
-            initBuffer.sort((a, b) => parseInt(b.pubDateMs || 0) - parseInt(a.pubDateMs || 0));
-            // Append in newest-first order: first appended = top of feed
-            initBuffer.forEach(a => insertArticle(a, false));
-            initBuffer = [];
+            clearTimeout(initTimeout);
+            flushInitBuffer();
         });
 
         es.onopen = () => {
@@ -371,12 +382,20 @@
         };
 
         es.onerror = () => {
+            clearTimeout(initTimeout);
+            flushInitBuffer(); // render whatever we have before reconnecting
             statusEl.textContent = 'Reconnecting…';
             statusEl.className = 'error';
             es.close();
+            activeEs = null;
             setTimeout(connect, 5000);
         };
     }
+
+    // iOS BFCache: Safari freezes pages with open connections; reconnect on restore.
+    window.addEventListener('pageshow', e => {
+        if (e.persisted) connect();
+    });
 
     connect();
 </script>

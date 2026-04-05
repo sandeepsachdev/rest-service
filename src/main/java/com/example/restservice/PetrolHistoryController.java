@@ -67,7 +67,9 @@ public class PetrolHistoryController {
         //SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("hh:mm a E dd/MM/yyyy");
 
-        StringBuilder output = new StringBuilder("<html>\n" + "<header><title>Price History</title></header>\n" +
+        StringBuilder output = new StringBuilder("<html>\n" +
+                "<head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
+                "<title>Price History</title></head>\n" +
                 "<style> table, th, td {\n" +
                 "  border: 1px solid black;\n" +
                 "  border-collapse: collapse;\n" +
