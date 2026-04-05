@@ -173,11 +173,31 @@
     </span>
     <span class="chip-wrap">
         <input type="checkbox" id="src-guardian" data-source="The Guardian" checked>
-        <label for="src-guardian" style="--c:#052962">The Guardian</label>
+        <label for="src-guardian" style="--c:#4a90d9">The Guardian</label>
     </span>
     <span class="chip-wrap">
         <input type="checkbox" id="src-npr" data-source="NPR News" checked>
         <label for="src-npr" style="--c:#1e6d9c">NPR News</label>
+    </span>
+    <span class="chip-wrap">
+        <input type="checkbox" id="src-cbc" data-source="CBC News" checked>
+        <label for="src-cbc" style="--c:#cc0000">CBC News</label>
+    </span>
+    <span class="chip-wrap">
+        <input type="checkbox" id="src-aljazeera" data-source="Al Jazeera" checked>
+        <label for="src-aljazeera" style="--c:#d4a017">Al Jazeera</label>
+    </span>
+    <span class="chip-wrap">
+        <input type="checkbox" id="src-abc" data-source="ABC News" checked>
+        <label for="src-abc" style="--c:#003087">ABC News</label>
+    </span>
+    <span class="chip-wrap">
+        <input type="checkbox" id="src-sky" data-source="Sky News" checked>
+        <label for="src-sky" style="--c:#e8001c">Sky News</label>
+    </span>
+    <span class="chip-wrap">
+        <input type="checkbox" id="src-hn" data-source="Hacker News" checked>
+        <label for="src-hn" style="--c:#ff6600">Hacker News</label>
     </span>
 </div>
 
@@ -192,8 +212,13 @@
 <script>
     const SOURCE_COLORS = {
         'BBC News':    { bg: '#1a0505', border: '#e50914', text: '#e50914' },
-        'The Guardian':{ bg: '#050d1a', border: '#052962', text: '#4a90d9' },
-        'NPR News':    { bg: '#051018', border: '#1e6d9c', text: '#4ab0d9' }
+        'The Guardian':{ bg: '#050d1a', border: '#1a3a6a', text: '#4a90d9' },
+        'NPR News':    { bg: '#051018', border: '#1e6d9c', text: '#4ab0d9' },
+        'Al Jazeera':  { bg: '#1a1500', border: '#d4a017', text: '#d4a017' },
+        'ABC News':    { bg: '#00020f', border: '#003087', text: '#4a7dd4' },
+        'Sky News':    { bg: '#1a0003', border: '#e8001c', text: '#e8001c' },
+        'CBC News':    { bg: '#0a0a1a', border: '#cc0000', text: '#cc0000' },
+        'Hacker News': { bg: '#1a0d00', border: '#ff6600', text: '#ff6600' }
     };
 
     const feed         = document.getElementById('feed');
@@ -211,11 +236,12 @@
         );
     }
 
-    function formatDate(raw) {
-        if (!raw) return '';
-        try {
-            return new Date(raw).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        } catch { return ''; }
+    function formatDate(pubDateMs, pubDateRaw) {
+        const ms = parseInt(pubDateMs);
+        const d = ms ? new Date(ms) : (pubDateRaw ? new Date(pubDateRaw) : null);
+        if (!d || isNaN(d)) return '';
+        return d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })
+               + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
     function esc(s) {
@@ -238,7 +264,7 @@
         a.innerHTML =
             '<div class="article-top">' +
               '<span class="source-badge" style="background:' + colors.bg + ';color:' + colors.text + ';border:1px solid ' + colors.border + '">' + esc(article.source) + '</span>' +
-              '<span class="article-date">' + esc(formatDate(article.pubDate)) + '</span>' +
+              '<span class="article-date">' + esc(formatDate(article.pubDateMs, article.pubDate)) + '</span>' +
             '</div>' +
             '<div class="article-title">' + esc(article.title) + '</div>' +
             (article.desc ? '<div class="article-desc">' + esc(article.desc) + '</div>' : '');
@@ -315,9 +341,7 @@
 
         es.addEventListener('article', e => {
             try {
-                const article = JSON.parse(e.data);
-                const isInitial = articleCount === 0;
-                insertArticle(article, !isInitial);
+                insertArticle(JSON.parse(e.data), true);
             } catch {}
         });
 

@@ -26,6 +26,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -38,7 +39,12 @@ public class StreamingNewsController {
     private static final List<String[]> FEEDS = List.of(
             new String[]{"BBC News",      "https://feeds.bbci.co.uk/news/rss.xml"},
             new String[]{"The Guardian",  "https://www.theguardian.com/world/rss"},
-            new String[]{"NPR News",      "https://feeds.npr.org/1001/rss.xml"}
+            new String[]{"NPR News",      "https://feeds.npr.org/1001/rss.xml"},
+            new String[]{"Al Jazeera",    "https://www.aljazeera.com/xml/rss/all.xml"},
+            new String[]{"ABC News",      "https://feeds.abcnews.com/abcnews/topstories"},
+            new String[]{"Sky News",      "https://feeds.skynews.com/feeds/rss/world.xml"},
+            new String[]{"CBC News",      "https://www.cbc.ca/cmlink/rss-topstories"},
+            new String[]{"Hacker News",   "https://hnrss.org/frontpage"}
     );
 
     private final HttpClient http = HttpClient.newBuilder()
@@ -55,7 +61,7 @@ public class StreamingNewsController {
         }
     });
     private final Deque<Map<String, String>> recentArticles = new ArrayDeque<>();
-    private static final int MAX_RECENT = 50;
+    private static final int MAX_RECENT = 100;
 
     @GetMapping(value = "/streaming-news", produces = MediaType.TEXT_HTML_VALUE)
     @ResponseBody
@@ -79,11 +85,13 @@ public class StreamingNewsController {
         emitter.onTimeout(() -> emitters.remove(emitter));
         emitter.onError(e -> emitters.remove(emitter));
 
-        // Send recent articles to the new subscriber immediately
+        // recentArticles is newest-first; reverse to oldest-first so the client
+        // can prepend each one and end up with newest at the top.
         List<Map<String, String>> snapshot;
         synchronized (recentArticles) {
             snapshot = new ArrayList<>(recentArticles);
         }
+        Collections.reverse(snapshot);
         try {
             for (Map<String, String> article : snapshot) {
                 emitter.send(SseEmitter.event()
@@ -120,10 +128,12 @@ public class StreamingNewsController {
 
         if (newArticles.isEmpty()) return;
 
-        // Newest first
-        Collections.reverse(newArticles);
+        // Sort oldest-first by parsed pubDate so that when the client prepends each
+        // article the newest one ends up at the top.
+        newArticles.sort(Comparator.comparingLong(a -> Long.parseLong(a.getOrDefault("pubDateMs", "0"))));
 
         synchronized (recentArticles) {
+            // addFirst for each oldest-to-newest article → newest ends up at front of deque
             for (Map<String, String> a : newArticles) {
                 recentArticles.addFirst(a);
             }
@@ -170,25 +180,68 @@ public class StreamingNewsController {
         for (int i = 0; i < nodes.getLength(); i++) {
             Element item = (Element) nodes.item(i);
             String title   = text(item, "title");
-            String link    = text(item, "link");
+            String link    = extractLink(item);
             String desc    = text(item, "description");
             String pubDate = text(item, "pubDate");
 
             if (title.isBlank() || link.isBlank()) continue;
 
-            // Strip HTML tags from description
             desc = desc.replaceAll("<[^>]*>", "").trim();
             if (desc.length() > 200) desc = desc.substring(0, 200) + "…";
 
+            long pubDateMs = parsePubDateMs(pubDate);
+
             Map<String, String> map = new LinkedHashMap<>();
-            map.put("title",   title);
-            map.put("link",    link);
-            map.put("desc",    desc);
-            map.put("pubDate", pubDate);
-            map.put("source",  source);
+            map.put("title",     title);
+            map.put("link",      link);
+            map.put("desc",      desc);
+            map.put("pubDate",   pubDate);
+            map.put("pubDateMs", String.valueOf(pubDateMs));
+            map.put("source",    source);
             items.add(map);
         }
         return items;
+    }
+
+    /**
+     * Extract the article URL from an RSS item. Tries, in order:
+     * 1. Text content of &lt;link&gt;
+     * 2. Text content of &lt;guid&gt; when it looks like a URL
+     * 3. href attribute of &lt;atom:link&gt; (used by some Atom-hybrid feeds)
+     */
+    private String extractLink(Element item) {
+        String link = text(item, "link");
+        if (!link.isBlank()) return link;
+
+        String guid = text(item, "guid");
+        if (!guid.isBlank() && (guid.startsWith("http://") || guid.startsWith("https://"))) return guid;
+
+        // atom:link (non-namespace-aware parser sees it as "atom:link")
+        NodeList atomLinks = item.getElementsByTagName("atom:link");
+        for (int i = 0; i < atomLinks.getLength(); i++) {
+            Element al = (Element) atomLinks.item(i);
+            String rel  = al.getAttribute("rel");
+            String href = al.getAttribute("href");
+            if (!href.isBlank() && (rel.isEmpty() || "alternate".equals(rel))) return href;
+        }
+        return "";
+    }
+
+    /** Parse an RFC 822 pubDate string to epoch milliseconds; returns now() on failure. */
+    private long parsePubDateMs(String pubDate) {
+        if (pubDate.isBlank()) return System.currentTimeMillis();
+        String[] formats = {
+            "EEE, dd MMM yyyy HH:mm:ss z",
+            "EEE, dd MMM yyyy HH:mm:ss Z",
+            "dd MMM yyyy HH:mm:ss z"
+        };
+        for (String fmt : formats) {
+            try {
+                return new SimpleDateFormat(fmt, Locale.ENGLISH).parse(pubDate).getTime();
+            } catch (Exception ignored) {}
+        }
+        log.debug("Could not parse pubDate: {}", pubDate);
+        return System.currentTimeMillis();
     }
 
     private String text(Element parent, String tag) {
