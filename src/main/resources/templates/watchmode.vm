@@ -147,7 +147,10 @@
             color: #f5c518; display: flex; align-items: center; gap: 2px;
         }
         .rating::before { content: "★"; }
-        .rating.no-rating { color: #555; }
+        .rating.critic { color: #f28b00; }
+        .rating.critic::before { content: ""; }
+        .rating-src { font-size: 0.6rem; font-weight: 400; margin-left: 1px; opacity: .8; }
+        .rating.no-rating { color: #444; }
         .rating.no-rating::before { content: ""; }
 
         .state {
@@ -197,6 +200,15 @@
             </span>
         </div>
     </div>
+    <div class="filter-group">
+        <span class="filter-label">Released within</span>
+        <input type="range" id="monthsSlider" min="0" max="6" step="1" value="1">
+        <span id="monthsVal">1 month</span>
+    </div>
+    <div class="filter-group">
+        <input type="checkbox" id="showUnrated">
+        <label for="showUnrated" class="filter-label" style="cursor:pointer">Show unrated</label>
+    </div>
 </div>
 
 <div id="content">
@@ -212,10 +224,12 @@
         'MAX':         '#b5179e'
     };
 
-    const content     = document.getElementById('content');
+    const content      = document.getElementById('content');
     const ratingSlider = document.getElementById('ratingSlider');
-    const ratingVal   = document.getElementById('ratingVal');
-    const resultCount = document.getElementById('resultCount');
+    const ratingVal    = document.getElementById('ratingVal');
+    const monthsSlider = document.getElementById('monthsSlider');
+    const monthsVal    = document.getElementById('monthsVal');
+    const resultCount  = document.getElementById('resultCount');
 
     let allTitles = [];
 
@@ -239,11 +253,18 @@
                 .map(el => el.dataset.name)
         );
 
+        const showUnrated = document.getElementById('showUnrated').checked;
+        const months = parseInt(monthsSlider.value);
+        const cutoff = new Date();
+        cutoff.setMonth(cutoff.getMonth() - months);
+        const cutoffStr = cutoff.toISOString().slice(0, 10);
+
         const visible = allTitles.filter(t => {
-            const rating = t.user_rating != null ? t.user_rating : 0;
-            if (rating < minRating) return false;
             const sources = t.sources || [];
-            return sources.some(s => activeSrcs.has(s));
+            if (!sources.some(s => activeSrcs.has(s))) return false;
+            if ((t.source_release_date || '') < cutoffStr) return false;
+            if (t.user_rating == null) return showUnrated;
+            return t.user_rating >= minRating;
         });
 
         resultCount.textContent = visible.length + ' title' + (visible.length !== 1 ? 's' : '');
@@ -275,9 +296,14 @@
                 : '<div class="card-poster-wrap">' + posterInner + badge + '</div>';
 
             const year = t.year || '';
-            const ratingDisplay = t.user_rating != null
-                ? '<span class="rating">' + t.user_rating.toFixed(1) + '</span>'
-                : '<span class="rating no-rating">N/A</span>';
+            let ratingDisplay;
+            if (t.user_rating != null) {
+                ratingDisplay = '<span class="rating">' + t.user_rating.toFixed(1) + '</span>';
+            } else if (t.critic_score != null) {
+                ratingDisplay = '<span class="rating critic">' + t.critic_score + '<span class="rating-src">RT</span></span>';
+            } else {
+                ratingDisplay = '<span class="rating no-rating">&mdash;</span>';
+            }
 
             card.innerHTML = poster +
                 '<div class="card-body">' +
@@ -307,9 +333,16 @@
         render();
     });
 
+    monthsSlider.addEventListener('input', () => {
+        const m = parseInt(monthsSlider.value);
+        monthsVal.textContent = m === 0 ? 'Today' : m === 1 ? '1 month' : m + ' months';
+        render();
+    });
+
     document.querySelectorAll('.chip-wrap input').forEach(cb => {
         cb.addEventListener('change', render);
     });
+    document.getElementById('showUnrated').addEventListener('change', render);
 
     load();
 </script>

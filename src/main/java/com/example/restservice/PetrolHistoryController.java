@@ -234,7 +234,7 @@ public class PetrolHistoryController {
                         excludedMap.put(item.getGuid().get(), new SmhItem(item));
                         excludes.add(item);
                         excludedArticles++;
-                        log.warn("excluded count:" + excludedArticles + " " + text);
+//                        log.warn("excluded count:" + excludedArticles + " " + text);
                     }
                 }
             }

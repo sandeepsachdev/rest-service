@@ -9,6 +9,8 @@ import org.apache.velocity.VelocityContext;
 import org.apache.velocity.app.VelocityEngine;
 import org.apache.velocity.runtime.RuntimeConstants;
 import org.apache.velocity.runtime.resource.loader.ClasspathResourceLoader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,6 +30,7 @@ import java.util.concurrent.CompletableFuture;
 @Controller
 public class WatchmodeController {
 
+    private static final Logger log = LoggerFactory.getLogger(WatchmodeController.class);
     private static final String API_KEY = "pLpfDe0oNjhVtgjoSIaZKxdj7mEDOG0igYM63zoB";
     private static final String BASE = "https://api.watchmode.com/v1";
     private static final Set<Integer> TARGET_SOURCES = Set.of(203, 372, 26, 387);
@@ -61,25 +64,43 @@ public class WatchmodeController {
             return cachedJson;
         }
 
-        // 1. Fetch all recent releases
+        // 1. Fetch 6 months in two parallel 3-month chunks (API caps at ~249/request, returns oldest first)
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyyMMdd");
-        String endDate   = LocalDate.now().format(fmt);
-        String startDate = LocalDate.now().minusDays(30).format(fmt);
+        LocalDate today = LocalDate.now();
+        String end1   = today.format(fmt);
+        String start1 = today.minusMonths(3).format(fmt);
+        String end2   = today.minusMonths(3).minusDays(1).format(fmt);
+        String start2 = today.minusMonths(6).format(fmt);
 
-        JsonNode relNode = mapper.readTree(httpGet(BASE + "/releases/?apiKey=" + API_KEY
-                + "&region=AU&start_date=" + startDate + "&end_date=" + endDate));
+        CompletableFuture<String> fetch1 = CompletableFuture.supplyAsync(() -> {
+            try { return httpGet(BASE + "/releases/?apiKey=" + API_KEY + "&start_date=" + start1 + "&end_date=" + end1); }
+            catch (Exception e) { return "{\"releases\":[]}"; }
+        });
+        CompletableFuture<String> fetch2 = CompletableFuture.supplyAsync(() -> {
+            try { return httpGet(BASE + "/releases/?apiKey=" + API_KEY + "&start_date=" + start2 + "&end_date=" + end2); }
+            catch (Exception e) { return "{\"releases\":[]}"; }
+        });
+        CompletableFuture.allOf(fetch1, fetch2).join();
+
+        List<JsonNode> allReleases = new ArrayList<>();
+        for (JsonNode rel : mapper.readTree(fetch1.get()).get("releases")) allReleases.add(rel);
+        for (JsonNode rel : mapper.readTree(fetch2.get()).get("releases")) allReleases.add(rel);
 
         // 2. Filter to target sources; deduplicate by title ID; track sources per title
         Map<Integer, List<String>> sourcesById = new LinkedHashMap<>();
         Map<Integer, JsonNode> releaseById = new LinkedHashMap<>();
 
-        for (JsonNode rel : relNode.get("releases")) {
+        for (JsonNode rel : allReleases) {
             int sourceId = rel.get("source_id").asInt();
             if (!TARGET_SOURCES.contains(sourceId)) continue;
 
             int titleId = rel.get("id").asInt();
             sourcesById.computeIfAbsent(titleId, k -> new ArrayList<>()).add(rel.get("source_name").asText());
-            releaseById.putIfAbsent(titleId, rel);
+            // Keep the most recent source_release_date for each title (same title can appear
+            // multiple times across chunks for different seasons/re-releases)
+            releaseById.merge(titleId, rel, (existing, incoming) ->
+                    nodeText(incoming, "source_release_date").compareTo(nodeText(existing, "source_release_date")) > 0
+                            ? incoming : existing);
         }
 
         // 3. Fetch title details in parallel to get user_rating, year, plot
@@ -113,6 +134,8 @@ public class WatchmodeController {
             // Rating & year from details
             if (det.has("user_rating") && !det.get("user_rating").isNull())
                 item.put("user_rating", det.get("user_rating").asDouble());
+            if (det.has("critic_score") && !det.get("critic_score").isNull())
+                item.put("critic_score", det.get("critic_score").asInt());
             if (det.has("year") && !det.get("year").isNull())
                 item.put("year", det.get("year").asInt());
             if (det.has("plot_overview") && !det.get("plot_overview").isNull())
@@ -149,12 +172,16 @@ public class WatchmodeController {
     }
 
     private String httpGet(String url) throws Exception {
+        log.info("Watchmode GET {}", url);
+        long start = System.currentTimeMillis();
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .timeout(Duration.ofSeconds(15))
                 .GET()
                 .build();
-        return http.send(req, HttpResponse.BodyHandlers.ofString()).body();
+        HttpResponse<String> response = http.send(req, HttpResponse.BodyHandlers.ofString());
+        log.info("Watchmode {} {} ({}ms)", response.statusCode(), url, System.currentTimeMillis() - start);
+        return response.body();
     }
 
     private String nodeText(JsonNode node, String field) {
