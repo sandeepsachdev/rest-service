@@ -115,12 +115,40 @@ public class WatchmodeController {
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
-        // 4. Merge release + details into enriched items
+        // 4. Fire all TMDB fallback calls in parallel (previously these were sequential
+        //    inside the merge loop — the main cause of slow first-load times).
+        //    Each future returns String[]{contentRating, userRatingStr} for its title.
+        List<CompletableFuture<String[]>> tmdbFutures = new ArrayList<>(ids.size());
+        for (int i = 0; i < ids.size(); i++) {
+            JsonNode det = futures.get(i).get();
+            JsonNode rel = releaseById.get(ids.get(i));
+
+            boolean needsRating        = !det.has("user_rating") || det.get("user_rating").isNull();
+            boolean needsContentRating = !det.has("us_rating")   || det.get("us_rating").isNull();
+            String tmdbType = nodeText(rel, "tmdb_type");
+            String tmdbId   = nodeText(rel, "tmdb_id");
+
+            if (!tmdbApiKey.isBlank() && !tmdbType.isBlank() && !tmdbId.isBlank()
+                    && (needsRating || needsContentRating)) {
+                final String tt = tmdbType, ti = tmdbId;
+                final boolean fetchRating = needsRating, fetchCR = needsContentRating;
+                tmdbFutures.add(CompletableFuture.supplyAsync(() -> new String[]{
+                        fetchCR     ? fetchTmdbContentRating(tt, ti)               : "",
+                        fetchRating ? String.valueOf(fetchTmdbRating(tt, ti))       : "0"
+                }));
+            } else {
+                tmdbFutures.add(CompletableFuture.completedFuture(new String[]{"", "0"}));
+            }
+        }
+        CompletableFuture.allOf(tmdbFutures.toArray(new CompletableFuture[0])).join();
+
+        // 5. Merge release + details + TMDB fallback into enriched items
         List<ObjectNode> items = new ArrayList<>();
         for (int i = 0; i < ids.size(); i++) {
             int id = ids.get(i);
             JsonNode rel = releaseById.get(id);
             JsonNode det = futures.get(i).get();
+            String[] tmdb = tmdbFutures.get(i).get();
 
             ObjectNode item = mapper.createObjectNode();
             item.put("id", id);
@@ -135,7 +163,7 @@ public class WatchmodeController {
             if (poster.isEmpty()) poster = nodeText(det, "posterMedium");
             item.put("poster_url", poster);
 
-            // Rating & year from Watchmode details
+            // Rating & year from Watchmode details, TMDB as fallback
             boolean hasRating = det.has("user_rating") && !det.get("user_rating").isNull();
             if (hasRating)
                 item.put("user_rating", det.get("user_rating").asDouble());
@@ -147,30 +175,21 @@ public class WatchmodeController {
                 item.put("plot_overview", det.get("plot_overview").asText());
             if (det.has("original_language") && !det.get("original_language").isNull())
                 item.put("original_language", det.get("original_language").asText());
-            // Age rating: prefer Watchmode us_rating, fall back to TMDB content ratings
+
+            // Age rating: Watchmode us_rating → TMDB content rating
             String ageRating = "";
             if (det.has("us_rating") && !det.get("us_rating").isNull())
                 ageRating = det.get("us_rating").asText();
-            if (ageRating.isBlank() && !tmdbApiKey.isBlank()) {
-                JsonNode release = releaseById.get(id);
-                String tmdbType = nodeText(release, "tmdb_type");
-                String tmdbId   = nodeText(release, "tmdb_id");
-                if (!tmdbType.isBlank() && !tmdbId.isBlank())
-                    ageRating = fetchTmdbContentRating(tmdbType, tmdbId);
-            }
+            if (ageRating.isBlank() && !tmdb[0].isBlank())
+                ageRating = tmdb[0];
             if (!ageRating.isBlank())
                 item.put("us_rating", ageRating);
 
-            // TMDB user_rating fallback when Watchmode has no user_rating
-            if (!hasRating && !tmdbApiKey.isBlank()) {
-                JsonNode release = releaseById.get(id);
-                String tmdbType = nodeText(release, "tmdb_type");
-                String tmdbId   = nodeText(release, "tmdb_id");
-                if (!tmdbType.isBlank() && !tmdbId.isBlank()) {
-                    double tmdbRating = fetchTmdbRating(tmdbType, tmdbId);
-                    if (tmdbRating > 0)
-                        item.put("user_rating", tmdbRating);
-                }
+            // User rating fallback from TMDB
+            if (!hasRating) {
+                double tmdbRating = Double.parseDouble(tmdb[1]);
+                if (tmdbRating > 0)
+                    item.put("user_rating", tmdbRating);
             }
 
             // Sources (deduplicated)
