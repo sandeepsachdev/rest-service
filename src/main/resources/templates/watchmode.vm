@@ -189,6 +189,14 @@
         .age-r, .age-tvma, .age-nc17               { color: #f44336; }
         .age-nr, .age-unknown                      { color: #555; border-color: #555; }
 
+        .lang-badge {
+            font-size: 0.6rem; font-weight: 600;
+            padding: 1px 5px; border-radius: 3px;
+            background: #1e1e30; color: #9090c0;
+            border: 1px solid #2a2a48;
+            letter-spacing: .03em; flex-shrink: 0;
+        }
+
         .state {
             display: flex; flex-direction: column; align-items: center;
             justify-content: center; gap: 10px;
@@ -268,6 +276,16 @@
         'MAX':         '#b5179e',
         'Stan':        '#0072ce'
     };
+
+    const langNames = typeof Intl !== 'undefined' && Intl.DisplayNames
+        ? new Intl.DisplayNames(['en'], { type: 'language' })
+        : null;
+
+    function langLabel(code) {
+        if (!code) return '';
+        try { return langNames ? langNames.of(code) : code.toUpperCase(); }
+        catch { return code.toUpperCase(); }
+    }
 
     const content      = document.getElementById('content');
     const ratingSlider = document.getElementById('ratingSlider');
@@ -367,12 +385,18 @@
                 ? '<span class="age-rating ' + ageCls + '">' + esc(ageRaw) + '</span>'
                 : '';
 
+            const lang = t.original_language || '';
+            const langDisplay = lang && lang !== 'en'
+                ? '<span class="lang-badge">' + esc(langLabel(lang)) + '</span>'
+                : '';
+
             card.innerHTML = poster +
                 '<div class="card-body">' +
                   '<div class="card-title">' + esc(t.title) + '</div>' +
                   '<div class="card-row">' +
                     '<span class="card-year">' + year + '</span>' +
                     '<span class="badge ' + (isTV ? 'b-tv' : 'b-movie') + '">' + (isTV ? 'TV' : 'Film') + '</span>' +
+                    langDisplay +
                     ageDisplay +
                     ratingDisplay +
                   '</div>' +

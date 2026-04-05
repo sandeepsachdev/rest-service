@@ -145,6 +145,8 @@ public class WatchmodeController {
                 item.put("year", det.get("year").asInt());
             if (det.has("plot_overview") && !det.get("plot_overview").isNull())
                 item.put("plot_overview", det.get("plot_overview").asText());
+            if (det.has("original_language") && !det.get("original_language").isNull())
+                item.put("original_language", det.get("original_language").asText());
             // Age rating: prefer Watchmode us_rating, fall back to TMDB content ratings
             String ageRating = "";
             if (det.has("us_rating") && !det.get("us_rating").isNull())
