@@ -96,7 +96,7 @@
             position: relative; width: 100%; aspect-ratio: 2/3;
             display: block; text-decoration: none;
         }
-        a.card-poster-wrap { cursor: pointer; }
+        .card-poster-wrap a.imdb-link { display: block; width: 100%; height: 100%; }
         .card-poster {
             width: 100%; height: 100%;
             object-fit: cover; background: #252538;
@@ -110,17 +110,16 @@
         }
         .info-link {
             position: absolute; top: 7px; right: 7px;
-            width: 22px; height: 22px; border-radius: 50%;
-            background: rgba(0,0,0,.65);
-            backdrop-filter: blur(4px);
-            color: #aaa;
+            width: 28px; height: 28px; border-radius: 50%;
+            background: #7c6af7;
+            color: #fff;
             font-size: 0.72rem; font-weight: 700;
             display: flex; align-items: center; justify-content: center;
             text-decoration: none;
-            border: 1px solid rgba(255,255,255,.15);
-            transition: background .15s, color .15s;
+            border: 1px solid rgba(255,255,255,.25);
+            transition: background .15s;
         }
-        .info-link:hover { background: #7c6af7; color: #fff; }
+        .info-link:hover { background: #5a4ed4; }
 
         .service-badge {
             position: absolute; bottom: 7px; left: 7px;
@@ -212,6 +211,10 @@
                 <input type="checkbox" id="s387" data-name="MAX"        checked>
                 <label for="s387" style="--c:#b5179e">HBO Max</label>
             </span>
+            <span class="chip-wrap">
+                <input type="checkbox" id="s425" data-name="Stan"       checked>
+                <label for="s425" style="--c:#0072ce">Stan</label>
+            </span>
         </div>
     </div>
     <div class="filter-group">
@@ -235,7 +238,8 @@
         'Netflix':     '#e50914',
         'Disney+':     '#0063e5',
         'Prime Video': '#00a8e1',
-        'MAX':         '#b5179e'
+        'MAX':         '#b5179e',
+        'Stan':        '#0072ce'
     };
 
     const content      = document.getElementById('content');
@@ -305,10 +309,11 @@
                 ? '<img class="card-poster" src="' + esc(t.poster_url) + '" alt="" loading="lazy">'
                 : '<div class="card-placeholder">' + (isTV ? '📺' : '🎬') + '</div>';
             const imdbHref = t.imdb_id ? 'https://www.imdb.com/title/' + esc(t.imdb_id) + '/' : '';
+            const imdbWrapped = imdbHref
+                ? '<a class="imdb-link" href="' + imdbHref + '" target="_blank" rel="noopener">' + posterInner + '</a>'
+                : posterInner;
             const infoLink = '<a class="info-link" href="/watchmode/title/' + t.id + '" target="_blank" rel="noopener" title="Raw data">i</a>';
-            const poster = imdbHref
-                ? '<a class="card-poster-wrap" href="' + imdbHref + '" target="_blank" rel="noopener">' + posterInner + badge + infoLink + '</a>'
-                : '<div class="card-poster-wrap">' + posterInner + badge + infoLink + '</div>';
+            const poster = '<div class="card-poster-wrap">' + imdbWrapped + badge + infoLink + '</div>';
 
             const year = t.year || '';
             let ratingDisplay;

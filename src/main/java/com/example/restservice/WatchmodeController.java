@@ -36,7 +36,7 @@ public class WatchmodeController {
     private static final String API_KEY = "pLpfDe0oNjhVtgjoSIaZKxdj7mEDOG0igYM63zoB";
     private static final String BASE = "https://api.watchmode.com/v1";
     private static final String TMDB_BASE = "https://api.themoviedb.org/3";
-    private static final Set<Integer> TARGET_SOURCES = Set.of(203, 372, 26, 387);
+    private static final Set<Integer> TARGET_SOURCES = Set.of(203, 372, 26, 387, 425);
     private static final long CACHE_TTL = 60 * 60 * 1000L;
 
     @Value("${tmdb.api.key:}")
