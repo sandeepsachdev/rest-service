@@ -249,6 +249,10 @@
         <input type="checkbox" id="showUnrated">
         <label for="showUnrated" class="filter-label" style="cursor:pointer">Show unrated</label>
     </div>
+    <div class="filter-group">
+        <input type="checkbox" id="showHidden">
+        <label for="showHidden" class="filter-label" style="cursor:pointer">Show hidden</label>
+    </div>
 </div>
 
 <div id="content">
@@ -295,12 +299,14 @@
         );
 
         const showUnrated = document.getElementById('showUnrated').checked;
+        const showHidden  = document.getElementById('showHidden').checked;
         const days = parseInt(daysSlider.value);
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - days);
         const cutoffStr = cutoff.toISOString().slice(0, 10);
 
         const visible = allTitles.filter(t => {
+            if (t.hidden && !showHidden) return false;
             const sources = t.sources || [];
             if (!sources.some(s => activeSrcs.has(s))) return false;
             if ((t.source_release_date || '') < cutoffStr) return false;
@@ -384,7 +390,8 @@
                 e.stopPropagation();
                 const id = btn.dataset.id;
                 await fetch('/api/watchmode/hidden/' + id, { method: 'POST' });
-                allTitles = allTitles.filter(t => String(t.id) !== id);
+                const t = allTitles.find(t => String(t.id) === id);
+                if (t) t.hidden = true;
                 render();
             });
         });
@@ -411,6 +418,7 @@
         cb.addEventListener('change', render);
     });
     document.getElementById('showUnrated').addEventListener('change', render);
+    document.getElementById('showHidden').addEventListener('change', render);
 
     load();
 </script>

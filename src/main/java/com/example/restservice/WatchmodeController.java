@@ -186,9 +186,12 @@ public class WatchmodeController {
             return Double.compare(rB, rA);
         });
 
-        // Remove any titles the user has permanently hidden
+        // Mark hidden titles so the frontend can optionally show them
         Set<Integer> hidden = hiddenTitleRepository.findAllTitleIds();
-        items.removeIf(item -> hidden.contains(item.get("id").asInt()));
+        items.forEach(item -> {
+            if (hidden.contains(item.get("id").asInt()))
+                item.put("hidden", true);
+        });
 
         ArrayNode arr = mapper.createArrayNode();
         items.forEach(arr::add);
