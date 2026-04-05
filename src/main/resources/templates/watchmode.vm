@@ -216,8 +216,8 @@
     </div>
     <div class="filter-group">
         <span class="filter-label">Released within</span>
-        <input type="range" id="monthsSlider" min="0" max="6" step="1" value="1">
-        <span id="monthsVal">1 month</span>
+        <input type="range" id="daysSlider" min="1" max="30" step="5" value="30">
+        <span id="daysVal">30 days</span>
     </div>
     <div class="filter-group">
         <input type="checkbox" id="showUnrated">
@@ -241,8 +241,8 @@
     const content      = document.getElementById('content');
     const ratingSlider = document.getElementById('ratingSlider');
     const ratingVal    = document.getElementById('ratingVal');
-    const monthsSlider = document.getElementById('monthsSlider');
-    const monthsVal    = document.getElementById('monthsVal');
+    const daysSlider = document.getElementById('daysSlider');
+    const daysVal    = document.getElementById('daysVal');
     const resultCount  = document.getElementById('resultCount');
 
     let allTitles = [];
@@ -268,9 +268,9 @@
         );
 
         const showUnrated = document.getElementById('showUnrated').checked;
-        const months = parseInt(monthsSlider.value);
+        const days = parseInt(daysSlider.value);
         const cutoff = new Date();
-        cutoff.setMonth(cutoff.getMonth() - months);
+        cutoff.setDate(cutoff.getDate() - days);
         const cutoffStr = cutoff.toISOString().slice(0, 10);
 
         const visible = allTitles.filter(t => {
@@ -348,9 +348,9 @@
         render();
     });
 
-    monthsSlider.addEventListener('input', () => {
-        const m = parseInt(monthsSlider.value);
-        monthsVal.textContent = m === 0 ? 'Today' : m === 1 ? '1 month' : m + ' months';
+    daysSlider.addEventListener('input', () => {
+        const d = parseInt(daysSlider.value);
+        daysVal.textContent = d === 1 ? '1 day' : d + ' days';
         render();
     });
 
