@@ -195,10 +195,6 @@
         <input type="checkbox" id="src-sky" data-source="Sky News" checked>
         <label for="src-sky" style="--c:#e8001c">Sky News</label>
     </span>
-    <span class="chip-wrap">
-        <input type="checkbox" id="src-hn" data-source="Hacker News" checked>
-        <label for="src-hn" style="--c:#ff6600">Hacker News</label>
-    </span>
 </div>
 
 <div id="feed">
@@ -217,8 +213,7 @@
         'Al Jazeera':  { bg: '#1a1500', border: '#d4a017', text: '#d4a017' },
         'ABC News':    { bg: '#00020f', border: '#003087', text: '#4a7dd4' },
         'Sky News':    { bg: '#1a0003', border: '#e8001c', text: '#e8001c' },
-        'CBC News':    { bg: '#0a0a1a', border: '#cc0000', text: '#cc0000' },
-        'Hacker News': { bg: '#1a0d00', border: '#ff6600', text: '#ff6600' }
+        'CBC News':    { bg: '#0a0a1a', border: '#cc0000', text: '#cc0000' }
     };
 
     const feed         = document.getElementById('feed');
