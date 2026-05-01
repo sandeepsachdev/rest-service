@@ -45,8 +45,7 @@ public class StreamingNewsController {
             new String[]{"Al Jazeera",    "https://www.aljazeera.com/xml/rss/all.xml"},
             new String[]{"ABC News",      "https://feeds.abcnews.com/abcnews/topstories"},
             new String[]{"Sky News",      "https://feeds.skynews.com/feeds/rss/world.xml"},
-            new String[]{"CBC News",      "https://www.cbc.ca/cmlink/rss-topstories"},
-            new String[]{"Hacker News",   "https://hnrss.org/frontpage"}
+            new String[]{"CBC News",      "https://www.cbc.ca/cmlink/rss-topstories"}
     );
 
     private final HttpClient http = HttpClient.newBuilder()
